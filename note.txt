@@ -1,0 +1,100 @@
+============== 代码方式启动Spring MVC需要的两个IOC容器（无 web.xml） ===============
+1、参照官方文档：https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/ 中的 Web Servlet 链接。
+   https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#spring-web 的 DispatcherServlet 章节。
+   实现 WebApplicationInitializer （类似 servlet 3.0 标准里的 ServletContainerInitializer）接口，这种方式类似我们之前通过
+   web.xml 整合 springmvc 的配置：
+    <web-app>
+        <listener>
+            <listener-class>org.springframework.web.context.ContextLoaderListener</listener-class>
+        </listener>
+        <!-- Spring容器配置（父容器） -->
+        <context-param>
+            <param-name>contextConfigLocation</param-name>
+            <param-value>/WEB-INF/app-context.xml</param-value>
+        </context-param>
+        <!-- SpringMVC容器配置（子容器） -->
+        <servlet>
+            <servlet-name>app</servlet-name>
+            <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+            <init-param>
+                <param-name>contextConfigLocation</param-name>
+                <param-value></param-value>
+            </init-param>
+            <load-on-startup>1</load-on-startup>
+        </servlet>
+        <servlet-mapping>
+            <servlet-name>app</servlet-name>
+            <url-pattern>/app/*</url-pattern>
+        </servlet-mapping>
+    </web-app>
+这里我们不用上面这种机制。
+2、web容器（比如tomcat）在启动时，会扫描每个jar包的 META-INF/services/javax.servlet.ServletContainerInitializer
+   加载这个文件的启动类。
+   spring-web.jar包里的 META-INF/services 下面有个 javax.servlet.ServletContainerInitializer 文件，内容为：
+   org.springframework.web.SpringServletContainerInitializer
+   这个类的 onStartup() 方法里，会扫描 @HandlesTypes 注解带的 WebApplicationInitializer 及其子类，如果是非接口/非抽象类的WebApplicationInitializer实现，就
+   创建实现类的实例。
+3、Spring的应用一启动就会加载感兴趣的 WebApplicationInitializer 接口下的所有组件。
+4、并且为 WebApplicationInitializer 实现类（非接口/非抽象类）创建组件。
+   a、AbstractContextLoaderInitializer ：WebApplicationInitializer 的第一层抽象子类，它在启动时调用 createRootApplicationContext 创建根IOC容器。
+      然后把这个IOC容器包装为 ContextLoaderListener ，注册到 servletContext 里，利用servletContext生命周期创建根IOC容器。
+      这和之前web.xml里的跟容器类似的。
+   b、AbstractDispatcherServletInitializer ：WebApplicationInitializer 的第一层抽象子类，它在启动时调用 createServletApplicationContext 创建Web的IOC容器，
+      再创建 DispatcherServlet，
+      将创建的dispatcherServlet添加到servletContext里，其中 getServletMappings() 留给我们自己实现。
+   c、AbstractAnnotationConfigDispatcherServletInitializer ：注解方式配置的 DispatcherServlet 初始化器。
+      createRootApplicationContext() 创建根IOC容器，该方法先调用getServletConfigClasses()（用户实现），
+                                      获取配置类，然后new AnnotationConfigWebApplicationContext，把配置类传入。
+      createServletApplicationContext() 创建web的IOC容器，调用 getServletConfigClasses() 获取配置类（用户实现），
+                                      获取配置类，然后new AnnotationConfigWebApplicationContext，把配置类传入。
+https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-servlet-context-hierarchy 里面也有介绍IOC容器：
+父容器： Root WebApplicationContext：包含 Services/Repositories 等等组件。
+子容器： Servlet WebApplicationContext：包含 Controllers/ViewResolver/HandlerMapping等等Web相关组件。
+优先在子容器里查找Bean，找不到再到父容器里找。
+DispatcherServlet不属于上面两个IOC容器。
+并且上面官网有个利用 AbstractAnnotationConfigDispatcherServletInitializer 进行自动配置的例子：
+public class MyWebAppInitializer extends AbstractAnnotationConfigDispatcherServletInitializer {
+    @Override
+    protected Class<?>[] getRootConfigClasses() {
+        return new Class<?>[] { RootConfig.class };
+    }
+    @Override
+    protected Class<?>[] getServletConfigClasses() {
+        return new Class<?>[] { App1Config.class };
+    }
+    @Override
+    protected String[] getServletMappings() {
+        return new String[] { "/app1/*" };
+    }
+}
+
+总结：
+    以注解方式启动 SpringMVC，继承 AbstractAnnotationConfigDispatcherServletInitializer ，
+    实现抽象方法，指定 DispatcherServlet 的信息，SpringMVC 框架会自动把相关组件注册到ServletContext里。
+项目起来后，在浏览器输入： http://localhost:8080/springmvc_annotation_war_exploded/hello
+可以看到 hello tomcat..
+
+================= 定制 Spring MVC ===================
+上面一节分析了如何启动Spring MVC需要的IOC容器，下面讲解如何对Spring MVC进行定制。
+参考：https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-config-enable
+1、在配置类加入： @EnableWebMvc 开启 SpringMVC 定制配置功能，作用和在 spring-mvc.xml 里的 <mvc:annotation-driven>  配置一样。
+2、配置组件（视图解析器、视图映射、静态资源映射、拦截器 ...
+   参考 https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-config-customize
+   实现 WebMvcConfigurer 接口（需要实现的接口很多，麻烦），或是继承 WebMvcConfigurerAdapter（更方便一些）
+
+============= Spring MVC 异步处理 ===================
+参考文档： https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-ann-async
+Controller 方法返回值为 Callable 或 DeferredResult 即可。
+原理参考 https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-ann-async-processing
+如果返回Callable，处理过程：
+Callable processing:
+    Controller returns a Callable.
+    Spring MVC calls request.startAsync() and submits the Callable to a TaskExecutor for processing in a separate thread.
+    Meanwhile the DispatcherServlet and all Filter’s exit the Servlet container thread but the response remains open.
+    Eventually the Callable produces a result and Spring MVC dispatches the request back to the Servlet container to complete processing.
+    The DispatcherServlet is invoked again and processing resumes with the asynchronously produced return value from the Callable.
+DeferredResult 应用场景：
+          app1                                   app2
+client ----> thread1  -----> JMS消息中间件  ---> thread2
+client <---- thread3  <----- JMS消息中间件  <--   处理结果
+https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-ann-async-deferredresult

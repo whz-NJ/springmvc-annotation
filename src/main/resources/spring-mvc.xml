@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:mvc="http://www.springframework.org/schema/mvc"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc.xsd">
+    <!-- 将SpringMVC处理不了的请求交给tomcat，针对静态资源的，加入下面的配置，静态资源通过tomcat就可以访问了-->
+    <mvc:default-servlet-handler />
+    <!--SpringMVC 的高级功能开启-->
+    <mvc:annotation-driven />
+<!--    <mvc:interceptors>
+    </mvc:interceptors>
+    <mvc:view-controller path=""/> -->
+    <!-- 现在不使用这个配置文件，如何实现上面配置的功能呢?? -->
+    <!-- 参考： https://docs.spring.io/spring/docs/5.0.16.RELEASE/spring-framework-reference/web.html#mvc-config-enable -->
+</beans>
